@@ -3,42 +3,86 @@ class ElementWrapper {
     this.root = document.createElement(type);
   }
   setAttribute(name, value) {
+    if(name.match(/^on([\s\S]+)$/)) {
+      let eventName = RegExp.$1.replace(/^[\s\S]/, s => s.toLowerCase())
+      this.root.addEventListener(eventName, value)
+    }
+    if(name === 'className') 
+      name = "class"
     this.root.setAttribute(name, value);
   }
   appendChild(vChild) {
-    vChild.mountTo(this.root);
+    let range = document.createRange()
+    if(this.root.children.length) {
+      range.setStartAfter(this.root.lastChild)
+      range.setEndAfter(this.root.lastChild)
+    } else {
+      range.setStart(this.root, 0)
+      range.setEnd(this.root, 0)
+    }
+    vChild.mountTo(range)
   }
-  mountTo(parent) {
-    parent.appendChild(this.root);
+  mountTo(range) {
+    range.deleteContents()
+    range.insertNode(this.root)
   }
 }
 class TextWrapper {
   constructor(content) {
     this.root = document.createTextNode(content);
   }
-  mountTo(parent) {
-    parent.appendChild(this.root);
+  mountTo(range) {
+    range.deleteContents()
+    range.insertNode(this.root)
   }
 }
 export class Component {
   constructor() {
     this.children = [];
+    this.props = Object.create(null)
   }
   setAttribute(name, value) {
+    this.props[name] = value
     this[name] = value;
   }
-  mountTo(parent) {
+  setState(state) {
+    let merge = (oldState, newState) => {
+      for(let p in newState) {
+        if(typeof newState[p] === "object") {
+          if(typeof oldState[p] !== "object") {
+            oldState[p] = {}
+          }
+          merge(oldState[p], newState[p])
+        } else {
+          oldState[p] = newState[p]
+        }
+      }
+    }
+    if(!this.state && state) 
+      this.state = {}
+    merge(this.state, state)
+    this.update()
+  }
+  mountTo(range) {
+    this.range = range
+    this.update()
+  }
+  update() {
+    let placeholder = document.createComment("placeholder");
+    let range = document.createRange();
+    range.setStart(this.range.endContainer, this.range.endOffset);
+    range.setEnd(this.range.endContainer, this.range.endOffset);
+    range.insertNode(placeholder);
+    this.range.deleteContents();
     let vdom = this.render();
-    console.log(vdom.root, parent);
-    parent.appendChild(vdom.root);
+    vdom.mountTo(this.range);
   }
   appendChild(vChild) {
     this.children.push(vChild);
   }
 }
 export let ToyReact = {
-  createElement(type, attr, ...children) {
-    console.log(type, typeof type);
+  createElement(type, attr, ...children) { 
     let elem;
     if (typeof type === "string") elem = new ElementWrapper(type);
     else elem = new type();
@@ -65,7 +109,14 @@ export let ToyReact = {
     return elem;
   },
   render(vdom, elem) {
-    console.log(vdom);
-    vdom.mountTo(elem);
+    let range = document.createRange()
+    if(elem.children.length) {
+      range.setStartAfter(elem.lastChild)
+      range.setEndAfter(elem.firstChild)
+    } else {
+      range.setStartAfter(elem, 0)
+      range.setEndAfter(elem, 0)
+    }
+    vdom.mountTo(range);
   },
 };
